@@ -1,0 +1,8 @@
+Copyleft Jonathan Smith 2011, may be redistributed under a BSD or MIT style license.
+
+This is an implementation of a Regex -> NFA -> DFA compiler in common lisp.
+It compiles down to an efficient lambda which uses tagbody and go to simulate a DFA.
+It can be compiled with either bytemode t or nil. 
+Bytemode T allows for matching against arrays of 8 bit bytes, as would be done in a C program.
+Bytemode NIL uses lisp's native string implementation, assumed to be either ascii or unicode.
+Further information should be sought by reading the code (There are a lot of comments).
