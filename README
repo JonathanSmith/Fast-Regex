@@ -6,3 +6,5 @@ It can be compiled with either bytemode t or nil.
 Bytemode T allows for matching against arrays of 8 bit bytes, as would be done in a C program.
 Bytemode NIL uses lisp's native string implementation, assumed to be either ascii or unicode.
 Further information should be sought by reading the code (There are a lot of comments).
+
+There may be bugs
