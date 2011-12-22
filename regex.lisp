@@ -1,6 +1,6 @@
 ;;Jon Smith PCCRE IMPLEMENTATION
 ;;;
-;;;05/20/2011...  Commented the shit out of this
+;;;05/20/2011... last updates.
 ;;;currently this is a 'textbook' regex->NFA->DFA construction.
 ;;;this ends up taking the DFA and producing a bunch of compiled code
 ;;;basically it can be a compiler from a regex string bunch of assembly
@@ -13,7 +13,9 @@
 ;;      (possibly by constructing a scanner within the DFA for each
 ;;      desired match and maintaining match-state.
 ;;      finish byte tests for default classes (digitp wordp, etc).
-#.(setf *efficiency-note-cost-threshold* 3)
+;#.(setf *efficiency-note-cost-threshold* 3)
+
+(in-package :fast-regex)
 
 (eval-when (:compile-toplevel :load-toplevel :execute) 
   (defvar epsilon '#:|epsilon|) 
@@ -247,7 +249,7 @@
   (set-token #\. :any)
   (set-token #\* :star)
   (set-token #\+ :plus)
-  (set-token #\? :quetion)
+  (set-token #\? :question)
   (set-token #\{ :lcurley)
   (set-token #\} :rcurley)
   (set-token #\- :dash)
@@ -878,7 +880,7 @@
 	     (char (gensym "char"))
 	     (char-code (gensym "char-code"))
 	     (i (gensym "i"))
-	     (furthest-match (gensym "furthest-match"))
+	     (farthest-match (gensym "farthest-match"))
 	     (matched? (gensym "matched?"))
 	     symb-hash
 	     (end-symb (gensym "end")))
@@ -945,7 +947,7 @@
 			`(,node-symb
 			  ,@(if final-state?
 				(list `(progn (setf ,matched? t)
-					      (setf ,furthest-match ,i)))
+					      (setf ,farthest-match ,i)))
 				nil)
 			  (if (= ,i ,strlen)
 			      (go ,end-symb))
@@ -966,7 +968,7 @@
 	      (type fixnum ,i ,strlen)
 	      (type (simple-array regex-char (*)) ,string))
 	     (let* (,matched? 
-		    (,furthest-match ,i)
+		    (,farthest-match ,i)
 		    (,char (aref ,string ,i))
 		    (,char-code ,(if *byte-mode* 
 				     char
@@ -978,7 +980,7 @@
 	       (tagbody 
 		  ,@node-code
 		  ,end-symb)
-	       (values ,matched? (- ,furthest-match 1)))))
+	       (values ,matched? (- ,farthest-match 1)))))
 	  )))))
 
 ;;;helper function, chains all of the functions that we have created thus far to generate
@@ -1007,7 +1009,7 @@
 	 (let ((tmp-str (gensym "tmp-str")))
 	   `(let ((,tmp-str ,string))
 	      (let ((*standard-output* nil))
-		(compile nil (eval (%compiled-regex ,tmp-str)))))))))
+		(compile nil (eval (fast-regex::%compiled-regex ,tmp-str)))))))))
 
 (declaim (optimize (speed 3) (space 0) (safety 0) (debug 0)))
 ;;;I hate to admit this, but I don't particularly care about the speed of the compiler...
@@ -1028,6 +1030,37 @@
 	  (when ret (return-from scan (values t match-start match-end)))))
   (values nil start end))
 
+
+(defun first-longest-match (regex seq &optional (start 0) (end (length seq)))
+  (loop for i from start below end do
+       (loop for j from end above i do
+	    ;(format t "~a~%" (subseq seq i j))
+	    (when (funcall regex seq i j)
+	      (return-from first-longest-match (values i j)))))
+  nil)
+
+(defun matches (regex seq &optional (start 0) (end (length seq)) accum)
+  (multiple-value-bind (match-start match-end) (first-longest-match regex seq start end)
+    (if (and match-start match-end)
+	(longest-matches regex seq match-end end (cons (list match-start match-end) accum))
+	accum)))
+
+(defun do-matches ((match-start match-end (regex seq)) &body body)
+  (let ((start (gensym "start"))
+	(end (gensym "end"))
+	(gseq (gensym "seq"))
+	(gregex (gensym "regex")))
+    `(let ((,start 0)
+	   (,end (length seq))
+	   (,gseq seq)
+	   (,gregex regex))
+
+       (do ()
+	   (NIL)
+	 (multiple-value-bind (,match-start ,match-end (first-longest-match ,gregex ,gseq ,start ,end))
+	     (unless (and ,match-start ,match-end) (return))
+	   ,@body)))))
+
 (declaim (inline scan))
 
 ;;;macro that iterates through successive matches,
@@ -1035,7 +1068,7 @@
 ;;;binding match start, and match end.
 ;;;it then evaluates 'body' when it finds a match.
 ;;;ends when we cannot find any other matches.
-(defmacro do-scan ((match-start match-end regex string &optional scan-start scan-end) &body body)
+#|(defmacro do-scan ((match-start match-end regex string &optional (scan-start 0) scan-end) &body body)
   (assert (symbolp match-start))
   (assert (symbolp match-end))
   (let ((t-string (gensym "string"))
@@ -1044,7 +1077,7 @@
 	(value (gensym "value")))
 
     `(let* ((,t-string ,string)
-	    (,start ,(or scan-start 0))
+	    (,start ,scan-start)
 	    (,end ,(or scan-end `(length ,t-string))))
        (declare (type (simple-array regex-char (*)) ,t-string)
 		(type fixnum ,start ,end))
@@ -1057,15 +1090,24 @@
 	       (progn ,@body (setf ,start ,match-end))
 	       (return)))))))
 
+(defmacro do-scan ((match-start match-end regex string &optional (scan-start 0) scan-end) &body body)
+  (assert (symbolp match-start))
+  (assert (symbolp match-end))
+  (loop for i from scan-start to scan-end do
+       (loop for j from i to scan-end do
+	    (multiple-value-bind (value start end) (funcall regex string i j)
+
+
+|#
 ;;;extract the start and end of all matches withing a string, as when
 ;;;matching by do-scan.
-(defun matches (regex string &key (start 0) (end (length string)))
+#|(defun matches (regex string &key (start 0) (end (length string)))
   (declare (type (simple-array regex-char (*)) string))
 
   (let (ret)
     (do-scan (i j regex string start end)
       (push (list i j) ret))
-    (nreverse ret)))
+    (nreverse ret)))|#
 
 ;;;extract all matches, using 'matches', and then construct a similar string,
 ;;;which replaces those matches with the given replacement string.
@@ -1162,6 +1204,16 @@
   `(progn ,@(mapcar 
 	     #'(lambda (pair)
 		 `(setf ,seq (funcall (make-regex-replacer ,@pair) ,seq))) pairs)))
+
+(defun split-string (regex seq &aux (accum nil))
+  (let ((begin 0))
+    (do-scan (i j regex seq)
+      (format t "~s~%" (list i j))
+      (push (subseq seq begin i) accum)
+      (setf begin j))
+    (if (< begin (length seq))
+	(push (subseq seq begin (length seq)) accum)))
+  (nreverse accum))
 
 ;;;;;;;;;;REGEX-DNA-TEST
 ;;;;;;;;;;;;;;;;;;;;;;;;
